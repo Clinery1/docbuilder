@@ -20,15 +20,23 @@ pub trait Parser<'doc> {
     fn color(&mut self)->Result<'doc,Color>;
     fn direction(&mut self)->Result<'doc,Direction>;
     fn page_size(&mut self)->Result<'doc,PageSize>;
+    fn vertical_text_align(&mut self)->Result<'doc,VTextAlign>;
+    fn horizontal_text_align(&mut self)->Result<'doc,HTextAlign>;
     fn section(&mut self)->Result<'doc,Section>;
     fn section_style(&mut self)->Result<'doc,SectionStyle>;
+    fn item(&mut self)->Result<'doc,Item>;
     fn metadata(&mut self)->Result<'doc,Metadata>;
     fn page(&mut self)->Result<'doc,Page>;
     fn page_style(&mut self)->Result<'doc,PageStyle>;
 }
 impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
-    fn into_document(self)->Result<'doc,Document> {
-        todo!();
+    fn into_document(mut self)->Result<'doc,Document> {
+        let metadata=self.skip(EXT_WHITESPACE).metadata()?;
+        let mut pages=Vec::new();
+        while !self.skip(EXT_WHITESPACE).is_eof() {
+            pages.push(self.page()?);
+        }
+        return Ok(Document{metadata,pages});
     }
     fn number(&mut self)->Result<'doc,f32> {
         const NUMBERS:&[&str]=&[
@@ -168,9 +176,32 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
         }
         return Err(self.create_error(ErrorKind::ExpectedPageSize,true));
     }
+    fn vertical_text_align(&mut self)->Result<'doc,VTextAlign> {
+        if self.then("Top")? {
+            return Ok(VTextAlign::Top);
+        } else if self.then("Bottom")? {
+            return Ok(VTextAlign::Bottom);
+        } else if self.then("Center")? {
+            return Ok(VTextAlign::Center);
+        }
+        return Err(self.create_error(ErrorKind::ExpectedTextAlign,true));
+    }
+    fn horizontal_text_align(&mut self)->Result<'doc,HTextAlign> {
+        if self.then("Left")? {
+            return Ok(HTextAlign::Left);
+        } else if self.then("Rigth")? {
+            return Ok(HTextAlign::Right);
+        } else if self.then("Center")? {
+            return Ok(HTextAlign::Center);
+        }
+        return Err(self.create_error(ErrorKind::ExpectedTextAlign,true));
+    }
     fn section(&mut self)->Result<'doc,Section> {
-        if !self.then("section")?&&!self.skip(WHITESPACE).then("{")? {
-            return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false));
+        if !self.then("section")? {
+            return Err(self.create_error(ErrorKind::ExpectedSection,false));
+        }
+        if !self.skip(WHITESPACE).then("{")? {
+            return Err(self.create_error(ErrorKind::ExpectedSectionBlockStart,true));
         }
         let mut style=None;
         let mut content=None;
@@ -202,7 +233,7 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                             break;
                         }
                         lines.push(self.until_any(NEWLINE).to_string());
-                        self.then_any(NEWLINE)?;
+                        self.skip(NEWLINE);
                     }
                     if !self.skip(WHITESPACE).then("}")? {
                         return Err(self.create_error(ErrorKind::ExpectedSectionContentBlockEnd,true));
@@ -211,17 +242,19 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                 },
                 _=>{
                     sp.finish_error();
-                    return Err(self.create_error(ErrorKind::ExpectedMetadata,false));
+                    return Err(self.create_error(ErrorKind::ExpectedSection,true));
                 },
             }
         }
         let content=content.ok_or_else(||self.create_error(ErrorKind::ExpectedSectionContent,true))?;
         return Ok(Section{content,style});
-        todo!();
     }
     fn section_style(&mut self)->Result<'doc,SectionStyle> {
-        if !self.then("style")?&&!self.skip(WHITESPACE).then("{")? {
+        if !self.then("style")? {
             return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false));
+        }
+        if !self.skip(WHITESPACE).then("{")? {
+            return Err(self.create_error(ErrorKind::ExpectedSectionStyleBlockStart,true));
         }
         let mut width=None;
         let mut height=None;
@@ -230,6 +263,9 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
         let mut font_size=None;
         let mut text_color=None;
         let mut background_color=None;
+        let mut margin:Option<SizedSides>=None;
+        let mut vertical_text_align=None;
+        let mut horizontal_text_align=None;
         while !self.skip(EXT_WHITESPACE).then("}")? {
             let name=self.name()?;
             if !self.then(":")? {
@@ -248,6 +284,18 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                         return Err(self.create_error(ErrorKind::AlreadyDefined("Section style/height"),true));
                     }
                     height=Some(self.size()?);
+                },
+                "vertical_text_align"=>{
+                    if vertical_text_align.is_some() {
+                        return Err(self.create_error(ErrorKind::AlreadyDefined("Section style/vertical text align"),true));
+                    }
+                    vertical_text_align=Some(self.vertical_text_align()?);
+                },
+                "horizontal_text_align"=>{
+                    if horizontal_text_align.is_some() {
+                        return Err(self.create_error(ErrorKind::AlreadyDefined("Section style/horizontal text align"),true));
+                    }
+                    horizontal_text_align=Some(self.horizontal_text_align()?);
                 },
                 "align"=>{
                     if align.is_some() {
@@ -279,14 +327,143 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                     }
                     background_color=Some(self.color()?);
                 },
-                _=>return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false)),
+                "margin"=>{
+                    if let Some(margin)=&mut margin {
+                        if margin.is_individual() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin-*"),true));
+                        }
+                        return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin"),true));
+                    } else {
+                        margin=Some(SizedSides::All(self.size()?));
+                    }
+                },
+                "margin_left"=>{
+                    if let Some(margin)=&mut margin {
+                        if margin.is_all() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin"),true));
+                        } else if margin.is_left_defined() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin_left"),true));
+                        }
+                        margin.set_left(self.size()?);
+                    } else {
+                        margin=Some(SizedSides::Individual {
+                            left:Some(self.size()?),
+                            right:None,
+                            top:None,
+                            bottom:None,
+                        });
+                    }
+                },
+                "margin_right"=>{
+                    if let Some(margin)=&mut margin {
+                        if margin.is_all() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin"),true));
+                        } else if margin.is_right_defined() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin_right"),true));
+                        }
+                        margin.set_right(self.size()?);
+                    } else {
+                        margin=Some(SizedSides::Individual {
+                            left:None,
+                            right:Some(self.size()?),
+                            top:None,
+                            bottom:None,
+                        });
+                    }
+                },
+                "margin_top"=>{
+                    if let Some(margin)=&mut margin {
+                        if margin.is_all() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin"),true));
+                        } else if margin.is_top_defined() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin_top"),true));
+                        }
+                        margin.set_top(self.size()?);
+                    } else {
+                        margin=Some(SizedSides::Individual {
+                            left:None,
+                            right:None,
+                            top:Some(self.size()?),
+                            bottom:None,
+                        });
+                    }
+                },
+                "margin_bottom"=>{
+                    if let Some(margin)=&mut margin {
+                        if margin.is_all() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin"),true));
+                        } else if margin.is_bottom_defined() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/margin_bottom"),true));
+                        }
+                        margin.set_bottom(self.size()?);
+                    } else {
+                        margin=Some(SizedSides::Individual {
+                            left:None,
+                            right:None,
+                            top:None,
+                            bottom:Some(self.size()?),
+                        });
+                    }
+                },
+                _=>return Err(self.create_error(ErrorKind::ExpectedSectionStyle,true)),
             }
         }
-        return Ok(SectionStyle{width,height,align,font,font_size,text_color,background_color});
+        return Ok(SectionStyle{width,height,align,font,font_size,text_color,background_color,margin,vertical_text_align,horizontal_text_align});
+    }
+    fn item(&mut self)->Result<'doc,Item> {
+        if self.then("vertical")? {
+            if !self.skip(WHITESPACE).then("{")? {
+                return Err(self.create_error(ErrorKind::ExpectedItemBlockStart,true));
+            }
+            let mut items=Vec::new();
+            let mut style=None;
+            while !self.skip(EXT_WHITESPACE).then("}")? {
+                let mut sp=self.subparser();
+                let name=sp.name()?;
+                sp.finish_error();
+                match name {
+                    "style"=>{
+                        if style.is_some() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Item/style"),true));
+                        }
+                        style=Some(self.section_style()?);
+                    },
+                    _=>items.push(self.item()?),
+                }
+            }
+            return Ok(Item::Vertical{items,style});
+        } else if self.then("horizontal")? {
+            if !self.skip(WHITESPACE).then("{")? {
+                return Err(self.create_error(ErrorKind::ExpectedItemBlockStart,true));
+            }
+            let mut items=Vec::new();
+            let mut style=None;
+            while !self.skip(EXT_WHITESPACE).then("}")? {
+                let mut sp=self.subparser();
+                let name=sp.name()?;
+                sp.finish_error();
+                match name {
+                    "style"=>{
+                        if style.is_some() {
+                            return Err(self.create_error(ErrorKind::AlreadyDefined("Item/style"),true));
+                        }
+                        style=Some(self.section_style()?);
+                    },
+                    _=>items.push(self.item()?),
+                }
+            }
+            return Ok(Item::Horizontal{items,style});
+        } else if self.test("section")? {
+            return Ok(Item::Section(self.section()?));
+        }
+        return Err(self.create_error(ErrorKind::ExpectedItem,false));
     }
     fn metadata(&mut self)->Result<'doc,Metadata> {
-        if !self.then("metadata")?&&!self.skip(WHITESPACE).then("{")? {
-            return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false));
+        if !self.then("metadata")? {
+            return Err(self.create_error(ErrorKind::ExpectedMetadata,false));
+        }
+        if !self.skip(WHITESPACE).then("{")? {
+            return Err(self.create_error(ErrorKind::ExpectedMetadataBlockStart,true));
         }
         let mut title=None;
         let mut page_style=None;
@@ -314,7 +491,7 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                 },
                 _=>{
                     sp.finish_error();
-                    return Err(self.create_error(ErrorKind::ExpectedMetadata,false));
+                    return Err(self.create_error(ErrorKind::ExpectedMetadata,true));
                 },
             }
         }
@@ -322,43 +499,56 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
         return Ok(Metadata{title,page_style});
     }
     fn page(&mut self)->Result<'doc,Page> {
-        if !self.then("page")?&&!self.skip(WHITESPACE).then("{")? {
-            return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false));
+        if !self.then("page")? {
+            return Err(self.create_error(ErrorKind::ExpectedPage,false));
         }
-        let mut sections=Vec::new();
+        if !self.skip(WHITESPACE).then("{")? {
+            return Err(self.create_error(ErrorKind::ExpectedPageBlockStart,true));
+        }
+        let mut items=Vec::new();
         let mut style=None;
         while !self.skip(EXT_WHITESPACE).then("}")? {
             let mut sp=self.subparser();
             let name=sp.name()?;
+            sp.finish_error();
             match name {
                 "style"=>{
-                    sp.finish_error();
                     if style.is_some() {
                         return Err(self.create_error(ErrorKind::AlreadyDefined("Page/style"),true));
                     }
                     style=Some(self.page_style()?);
                 },
-                "section"=>{
-                    sp.finish_error();
-                    sections.push(self.section()?);
-                },
                 _=>{
-                    sp.finish_error();
-                    return Err(self.create_error(ErrorKind::ExpectedMetadata,false));
+                    match self.item() {
+                        Ok(item)=>{
+                            items.push(item);
+                            continue;
+                        },
+                        Err(e)=>{
+                            if e.important {
+                                return Err(e);
+                            }
+                        },
+                    }
+                    return Err(self.create_error(ErrorKind::ExpectedPage,true));
                 },
             }
         }
-        return Ok(Page{sections,style});
+        return Ok(Page{items,style});
     }
     fn page_style(&mut self)->Result<'doc,PageStyle> {
-        if !self.then("style")?&&!self.skip(WHITESPACE).then("{")? {
-            return Err(self.create_error(ErrorKind::ExpectedSectionStyle,false));
+        if !self.then("style")? {
+            return Err(self.create_error(ErrorKind::ExpectedPageStyle,false));
+        }
+        if !self.skip(WHITESPACE).then("{")? {
+            return Err(self.create_error(ErrorKind::ExpectedPageStyleBlockStart,true));
         }
         let mut page_size=None;
         let mut text_color=None;
         let mut background_color=None;
         let mut margin:Option<SizedSides>=None;
-        let mut padding:Option<SizedSides>=None;
+        let mut vertical_text_align=None;
+        let mut horizontal_text_align=None;
         while !self.skip(EXT_WHITESPACE).then("}")? {
             let name=self.name()?;
             match name {
@@ -366,6 +556,7 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                     if page_size.is_some() {
                         return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/page size"),true));
                     }
+                    self.skip(WHITESPACE);
                     page_size=Some(self.page_size()?);
                 },
                 "text_color"=>{
@@ -387,6 +578,18 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                         return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/background color"),true));
                     }
                     background_color=Some(self.color()?);
+                },
+                "vertical_text_align"=>{
+                    if vertical_text_align.is_some() {
+                        return Err(self.create_error(ErrorKind::AlreadyDefined("Section style/vertical text align"),true));
+                    }
+                    vertical_text_align=Some(self.vertical_text_align()?);
+                },
+                "horizontal_text_align"=>{
+                    if horizontal_text_align.is_some() {
+                        return Err(self.create_error(ErrorKind::AlreadyDefined("Section style/horizontal text align"),true));
+                    }
+                    horizontal_text_align=Some(self.horizontal_text_align()?);
                 },
                 "margin"=>{
                     if !self.then(":")? {
@@ -486,108 +689,10 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
                         });
                     }
                 },
-                "padding"=>{
-                    if !self.then(":")? {
-                        return Err(self.create_error(ErrorKind::ExpectedColon,true));
-                    }
-                    self.skip(WHITESPACE);
-                    if let Some(padding)=&mut padding {
-                        if padding.is_individual() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding-*"),true));
-                        }
-                        return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding"),true));
-                    } else {
-                        padding=Some(SizedSides::All(self.size()?));
-                    }
-                },
-                "padding_left"=>{
-                    if !self.then(":")? {
-                        return Err(self.create_error(ErrorKind::ExpectedColon,true));
-                    }
-                    self.skip(WHITESPACE);
-                    if let Some(padding)=&mut padding {
-                        if padding.is_all() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding"),true));
-                        } else if padding.is_left_defined() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding_left"),true));
-                        }
-                        padding.set_left(self.size()?);
-                    } else {
-                        padding=Some(SizedSides::Individual {
-                            left:Some(self.size()?),
-                            right:None,
-                            top:None,
-                            bottom:None,
-                        });
-                    }
-                },
-                "padding_right"=>{
-                    if !self.then(":")? {
-                        return Err(self.create_error(ErrorKind::ExpectedColon,true));
-                    }
-                    self.skip(WHITESPACE);
-                    if let Some(padding)=&mut padding {
-                        if padding.is_all() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding"),true));
-                        } else if padding.is_right_defined() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding_right"),true));
-                        }
-                        padding.set_right(self.size()?);
-                    } else {
-                        padding=Some(SizedSides::Individual {
-                            left:None,
-                            right:Some(self.size()?),
-                            top:None,
-                            bottom:None,
-                        });
-                    }
-                },
-                "padding_top"=>{
-                    if !self.then(":")? {
-                        return Err(self.create_error(ErrorKind::ExpectedColon,true));
-                    }
-                    self.skip(WHITESPACE);
-                    if let Some(padding)=&mut padding {
-                        if padding.is_all() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding"),true));
-                        } else if padding.is_top_defined() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding_top"),true));
-                        }
-                        padding.set_top(self.size()?);
-                    } else {
-                        padding=Some(SizedSides::Individual {
-                            left:None,
-                            right:None,
-                            top:Some(self.size()?),
-                            bottom:None,
-                        });
-                    }
-                },
-                "padding_bottom"=>{
-                    if !self.then(":")? {
-                        return Err(self.create_error(ErrorKind::ExpectedColon,true));
-                    }
-                    self.skip(WHITESPACE);
-                    if let Some(padding)=&mut padding {
-                        if padding.is_all() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding"),true));
-                        } else if padding.is_bottom_defined() {
-                            return Err(self.create_error(ErrorKind::AlreadyDefined("Page style/padding_bottom"),true));
-                        }
-                        padding.set_bottom(self.size()?);
-                    } else {
-                        padding=Some(SizedSides::Individual {
-                            left:None,
-                            right:None,
-                            top:None,
-                            bottom:Some(self.size()?),
-                        });
-                    }
-                },
-                _=>return Err(self.create_error(ErrorKind::ExpectedPageStyle,false)),
+                _=>return Err(self.create_error(ErrorKind::ExpectedPageStyle,true)),
             }
         }
-        return Ok(PageStyle{page_size,text_color,background_color,margin,padding});
+        return Ok(PageStyle{page_size,text_color,background_color,margin,vertical_text_align,horizontal_text_align});
     }
 }
 
@@ -608,13 +713,22 @@ pub enum ErrorKind {
     ExpectedPageSizeHeight,
     ExpectedSectionStyle,
     ExpectedColon,
-    ExpectedPageOrientation,
     ExpectedPageStyle,
+    ExpectedPageStyleBlockStart,
     ExpectedMetadata,
+    ExpectedMetadataBlockStart,
     ExpectedMetadataTitle,
     ExpectedSectionContent,
     ExpectedSectionContentBlockStart,
     ExpectedSectionContentBlockEnd,
+    ExpectedPage,
+    ExpectedPageBlockStart,
+    ExpectedSection,
+    ExpectedSectionBlockStart,
+    ExpectedSectionStyleBlockStart,
+    ExpectedItem,
+    ExpectedItemBlockStart,
+    ExpectedTextAlign,
     InvalidColorLength,
     AlreadyDefined(&'static str),
     NumberParseError(String),
@@ -625,13 +739,51 @@ impl Display for ErrorKind {
         match self {
             UnexpectedEof=>write!(f,"Unexpected EOF"),
             ExpectedNumber=>write!(f,"Expected number"),
+            ExpectedName=>write!(f,"Expected name"),
+            ExpectedSize=>write!(f,"Expected size"),
+            ExpectedColor=>write!(f,"Expected color in HTML hex format: `#NNN` where there are 3, 4, 6, or 8 `N`s"),
+            ExpectedPageSize=>write!(f,"Expected page size"),
+            ExpectedDirection=>write!(f,"Expected direction"),
+            ExpectedPageSizeWidth=>write!(f,"Expected page style width"),
+            ExpectedPageSizeHeight=>write!(f,"Expected page style height"),
+            ExpectedSectionStyle=>write!(f,"Expected section style"),
+            ExpectedColon=>write!(f,"Expected `:`"),
+            ExpectedPageStyle=>write!(f,"Expected page style"),
+            ExpectedPageStyleBlockStart=>write!(f,"Expected page style block start (`{{`)"),
+            ExpectedMetadata=>write!(f,"Expected metadata"),
+            ExpectedMetadataBlockStart=>write!(f,"Expected metadata block start (`{{`)"),
+            ExpectedMetadataTitle=>write!(f,"Expected title"),
+            ExpectedSectionContent=>write!(f,"Expected section content"),
+            ExpectedSectionContentBlockStart=>write!(f,"Expected content block start (`{{`)"),
+            ExpectedSectionContentBlockEnd=>write!(f,"Expected content block end (`}}`)"),
+            ExpectedPage=>write!(f,"Expected page"),
+            ExpectedPageBlockStart=>write!(f,"Expected page block start (`{{`)"),
+            ExpectedSection=>write!(f,"Expected section"),
+            ExpectedSectionBlockStart=>write!(f,"Expected section block start (`{{`)"),
+            ExpectedSectionStyleBlockStart=>write!(f,"Expected section style block start (`{{`)"),
+            ExpectedItem=>write!(f,"Expected horizontal, vertical, or section"),
+            ExpectedItemBlockStart=>write!(f,"Expected horizontal, vertical, or section block start (`{{`)"),
+            ExpectedTextAlign=>write!(f,"Expected text align"),
+            InvalidColorLength=>write!(f,"Invalid hex code length. Expected 3, 4, 6, or 8 digits."),
+            AlreadyDefined(item)=>write!(f,"{} is already defined",item),
             NumberParseError(s)=>write!(f,"Error parsing number: {}",s),
-            e=>write!(f,"TODO: Proper error handling; {:?}",e),
         }
     }
 }
 impl EOFError for ErrorKind {
     fn create_eof()->Self {ErrorKind::UnexpectedEof}
+}
+#[derive(Debug)]
+pub enum Item {
+    Vertical {
+        items:Vec<Self>,
+        style:Option<SectionStyle>,
+    },
+    Horizontal {
+        items:Vec<Self>,
+        style:Option<SectionStyle>,
+    },
+    Section(Section),
 }
 #[derive(Debug)]
 pub enum Size {
@@ -730,6 +882,18 @@ pub enum Direction {
     Up,
     Down,
 }
+#[derive(Debug,PartialEq,Copy,Clone)]
+pub enum HTextAlign {
+    Left,
+    Right,
+    Center,
+}
+#[derive(Debug,PartialEq,Copy,Clone)]
+pub enum VTextAlign {
+    Top,
+    Bottom,
+    Center,
+}
 
 
 #[derive(Debug)]
@@ -744,16 +908,29 @@ pub struct Metadata {
 }
 #[derive(Debug)]
 pub struct Page {
-    pub sections:Vec<Section>,
+    pub items:Vec<Item>,
     pub style:Option<PageStyle>,
 }
-#[derive(Debug,Default)]
+#[derive(Debug)]
 pub struct PageStyle {
     pub page_size:Option<PageSize>,
     pub text_color:Option<Color>,
     pub background_color:Option<Color>,
     pub margin:Option<SizedSides>,
-    pub padding:Option<SizedSides>,
+    pub horizontal_text_align:Option<HTextAlign>,
+    pub vertical_text_align:Option<VTextAlign>,
+}
+impl Default for PageStyle {
+    fn default()->Self {
+        Self {
+            page_size:Some(PageSize::PortraitLetter),
+            text_color:None,
+            background_color:None,
+            margin:None,
+            horizontal_text_align:None,
+            vertical_text_align:None,
+        }
+    }
 }
 #[derive(Debug)]
 pub struct Section {
@@ -769,6 +946,9 @@ pub struct SectionStyle {
     pub font_size:Option<Size>,
     pub text_color:Option<Color>,
     pub background_color:Option<Color>,
+    pub margin:Option<SizedSides>,
+    pub horizontal_text_align:Option<HTextAlign>,
+    pub vertical_text_align:Option<VTextAlign>,
 }
 #[derive(Debug)]
 pub struct Color {
