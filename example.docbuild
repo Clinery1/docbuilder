@@ -1,0 +1,55 @@
+metadata {
+    title: Example document
+    page_style {
+        page_size: Letter
+        margin: 0.5in
+        padding: 0.1in
+    }
+}
+
+
+page {
+    section {
+        content {
+            # Explanation
+            In the content section, only commonmark text is allowed.
+            Smart indentation rules are applied here so:
+
+                This text is indented 4 spaces
+
+            And this text is not.
+
+            Just like normal commonmark, you can *italicize* and **bold** text.
+
+            `As expected, this is text is in a monospace font`
+
+            ```rust
+            fn main() {
+                println!("Syntax highlighting also works thanks to syntect!");
+            }
+            ```
+        }
+        style {
+            font: FiraCode Nerd Font
+            font_size: 14pt
+            text_color: #222222
+            background_color: #aaffff
+            width: 30%
+            align: Left
+        }
+    }
+    section {
+        content {
+            # This is the main body of text
+            Since the left side is taken up by the content above (in the source code), we have the remaining 70% of the page
+            (excluding margins). The best part is that we don't need to specify the margins in the actual page!
+        }
+        style {
+            font: FiraCode Nerd Font
+            font_size: 14pt
+            text_color: #000000
+            background_color: #ffffff
+            width: 70%
+        }
+    }
+}

@@ -1,0 +1,10 @@
+[package]
+name="document_builder"
+version="0.1.0"
+edition="2021"
+
+
+[dependencies]
+generic_parser={path="../generic_parser"}
+syntect="5"
+pulldown-cmark="0.9"
