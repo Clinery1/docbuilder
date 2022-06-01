@@ -205,7 +205,6 @@ impl IntoHtml for Section {
         size_style.horizontal_text_align=self_style.horizontal_text_align.clone();
         size_style.background_color=self_style.background_color.take();
         let mut out=format!("<div style=\"{}\"><div style=\"{}\">",size_style.into_html(parent_direction),self_style.into_html(parent_direction));
-        // TODO: cmark parsing
         let mut source=String::new();
         for s in self.content {
             source.push_str(&s);
@@ -302,8 +301,8 @@ impl IntoHtml for Section {
                         },
                         CodeBlock(_)=>{
                             // TODO: code block highlighting
-                            out.push_str("<pre style=\"white-space:break-spaces\">");
                             let code=code.take().unwrap();
+                            out.push_str("<pre style=\"white-space:break-spaces\">");
                             out.push_str(&code.1);
                             out.push_str("</pre>");
                         },
