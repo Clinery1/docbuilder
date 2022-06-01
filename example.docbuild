@@ -2,7 +2,7 @@ metadata {
     title: Example document
     style {
         page_size: PortraitLetter
-        background_color: #fafafa
+        background_color: #9f9f9f
     }
 }
 

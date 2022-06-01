@@ -89,12 +89,12 @@ impl<'doc> Parser<'doc> for GenericParser<'doc,ErrorKind> {
         let len=hex_digits.len();
         let mut convert_hex_digit=|double|{
             if double {
-                let num=HEX_LOOKUP.find(hex_digits.remove(0)).unwrap() as u8;
-                num+(num<<4)
-            } else {
                 let num=(HEX_LOOKUP.find(hex_digits.remove(0)).unwrap() as u8)<<4;
                 let num2=HEX_LOOKUP.find(hex_digits.remove(0)).unwrap() as u8;
                 num+num2
+            } else {
+                let num=HEX_LOOKUP.find(hex_digits.remove(0)).unwrap() as u8;
+                num+(num<<4)
             }
         };
         match len {
