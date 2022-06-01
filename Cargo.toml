@@ -6,5 +6,5 @@ edition="2021"
 
 [dependencies]
 generic_parser={path="../generic_parser"}
-syntect="5"
+#syntect="5"
 pulldown-cmark="0.9"
