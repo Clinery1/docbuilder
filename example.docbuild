@@ -67,10 +67,12 @@ page {
                     # Explanation
                     In the content section, only commonmark text is allowed.
                     Smart indentation rules are applied here so:
-
+                    ```
                         This text is indented 4 spaces
-
+                    ```
+                    ```
                     And this text is not.
+                    ```
 
                     Just like normal commonmark, you can *italicize* and **bold** text.
 

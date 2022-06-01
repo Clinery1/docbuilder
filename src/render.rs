@@ -331,8 +331,7 @@ impl IntoHtml for Section {
                     let fmt=format!("<a href=\"#{}\"><sup>{}</sup></a>",r,r);
                     out.push_str(&fmt)
                 },
-                SoftBreak=>out.push('\n'),
-                HardBreak=>out.push_str("<br>"),
+                SoftBreak|HardBreak=>out.push_str("<br>"),
                 Rule=>out.push_str("<hr>"),
                 _=>{},
             }
