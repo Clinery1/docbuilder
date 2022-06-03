@@ -211,15 +211,18 @@ impl IntoHtml for Section {
             source.push('\n');
         }
         let mut code:Option<(Option<String>,String)>=None;
+        let mut in_footnote=false;
         //println!("-------------------------------");
-        for event in Parser::new_ext(&source,Options::ENABLE_STRIKETHROUGH) {
+        for event in Parser::new_ext(&source,Options::ENABLE_STRIKETHROUGH|Options::ENABLE_FOOTNOTES) {
             //println!("Markdown item: {:?}",event);
             use Event::*;
             match event {
                 Start(tag)=>{
                     use Tag::*;
                     match tag {
-                        Paragraph=>out.push_str("<p>"),
+                        Paragraph=>{
+                            if !in_footnote {out.push_str("<p>")}
+                        },
                         BlockQuote=>out.push_str("<blockquote>"),
                         List(start)=>{
                             if let Some(start)=start {
@@ -269,7 +272,8 @@ impl IntoHtml for Section {
                             out.push_str(&fmt);
                         },
                         FootnoteDefinition(name)=>{
-                            let fmt=format!("<span id=\"{}\">",name);
+                            in_footnote=true;
+                            let fmt=format!("<p id=\"{}\"><sup>{}</sup>&nbsp;",name,name);
                             out.push_str(&fmt);
                         },
                         _=>{},
@@ -278,7 +282,9 @@ impl IntoHtml for Section {
                 End(tag)=>{
                     use Tag::*;
                     match tag {
-                        Paragraph=>out.push_str("</p>"),
+                        Paragraph=>{
+                            if !in_footnote{out.push_str("</p>")}
+                        },
                         BlockQuote=>out.push_str("</blockquote>"),
                         List(start)=>{
                             if start.is_some() {
@@ -310,7 +316,10 @@ impl IntoHtml for Section {
                         Strong=>out.push_str("</strong>"),
                         Strikethrough=>out.push_str("</strike>"),
                         Link(..)=>out.push_str("</a>"),
-                        FootnoteDefinition(_)=>out.push_str("</span>"),
+                        FootnoteDefinition(_)=>{
+                            out.push_str("</p>");
+                            in_footnote=false;
+                        },
                         _=>{},
                     }
                 },
@@ -403,7 +412,7 @@ impl IntoHtml for Page {
 }
 impl IntoHtml for Metadata {
     fn into_html(self,parent_direction:ParentDirection)->String {
-        return format!("<title>{}</title><style>.page{{display:flex;{}}}</style>",self.title,self.page_style.unwrap_or_default().into_html(parent_direction));
+        return format!("<title>{}</title><style>html{{height:100%;width:100%}}body{{height:100%;width:100%}}.page{{display:flex;{}}}</style>",self.title,self.page_style.unwrap_or_default().into_html(parent_direction));
     }
 }
 impl IntoHtml for Document {

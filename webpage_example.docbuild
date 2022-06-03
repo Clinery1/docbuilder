@@ -1,19 +1,28 @@
 metadata {
     title: Example document
     style {
-        page_size: PortraitLetter
-        background_color: #9f9f9f
+        text_color: #000
+        page_size: Webpage
+        background_color: #999
     }
 }
 
 
 page {
     vertical {
+        style {
+            background_color: #000
+            font: mononoki Nerd Font Mono
+            font_size: 12pt
+            height: 100%
+            width: 100%
+        }
         section {
             content {
                 # Title
             }
             style {
+                background_color: #9f9f9f
                 margin: 0.25in
                 horizontal_text_align: Center
                 vertical_text_align: Center
@@ -31,12 +40,7 @@ page {
                         - Another one!
                     }
                     style {
-                        font: FiraCode Nerd Font
-                        font_size: 12pt
-                        text_color: #222222
-                        background_color: #aaffff
                         margin: 0.25in
-                        height: 25%
                     }
                 }
                 section {
@@ -47,14 +51,11 @@ page {
                         2. Another one!
                     }
                     style {
-                        font: FiraCode Nerd Font
-                        font_size: 12pt
-                        text_color: #222222
-                        background_color: #aaffff
                         margin: 0.25in
                     }
                 }
                 style {
+                    background_color: #aaffffff
                     width: 30%
                 }
             }
@@ -85,27 +86,10 @@ page {
                     ```
                 }
                 style {
-                    font: FiraCode Nerd Font
-                    font_size: 12pt
-                    text_color: #000000
                     background_color: #bbb
                     margin: 0.25in
-                    width:70%
                 }
             }
-        }
-        style {
-            width:100%
-        }
-    }
-}
-page {
-    section {
-        content {
-            # Second page
-        }
-        style {
-            background_color: #ddd
         }
     }
 }

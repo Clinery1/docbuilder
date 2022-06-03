@@ -911,7 +911,7 @@ pub struct Page {
     pub items:Vec<Item>,
     pub style:Option<PageStyle>,
 }
-#[derive(Debug)]
+#[derive(Debug,Default)]
 pub struct PageStyle {
     pub page_size:Option<PageSize>,
     pub text_color:Option<Color>,
@@ -919,18 +919,6 @@ pub struct PageStyle {
     pub margin:Option<SizedSides>,
     pub horizontal_text_align:Option<HTextAlign>,
     pub vertical_text_align:Option<VTextAlign>,
-}
-impl Default for PageStyle {
-    fn default()->Self {
-        Self {
-            page_size:Some(PageSize::PortraitLetter),
-            text_color:None,
-            background_color:None,
-            margin:None,
-            horizontal_text_align:None,
-            vertical_text_align:None,
-        }
-    }
 }
 #[derive(Debug)]
 pub struct Section {
